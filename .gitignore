@@ -1,0 +1,60 @@
+# --- Segredos / ambiente ---
+.env
+.env.*
+!.env.example
+
+# --- PDFs e saídas de conversão (dados de usuário/teste; ver CLAUDE.md) ---
+*.pdf
+!backend/tests/fixtures/*.pdf
+backend/pdfs/
+*.md.tmp
+
+# --- Modelos baixados (Docling / OCR / Hugging Face) ---
+models/
+.cache/
+*.onnx
+*.safetensors
+*.pt
+*.pth
+
+# --- Python / backend ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Node / frontend ---
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+coverage/
+
+# --- Logs ---
+*.log
+
+# --- Sistema operacional ---
+.DS_Store
+Thumbs.db
+
+# --- Editores / ferramentas locais ---
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+.claude/settings.local.json
