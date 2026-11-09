@@ -53,7 +53,7 @@ export default function ConvertingCard({
 
       <div className="mt-6 flex items-center gap-3 font-semibold">
         <Spinner className="text-accent-text" />
-        Convertendo seu PDF...
+        Convertendo seu arquivo...
       </div>
 
       <div
@@ -70,7 +70,7 @@ export default function ConvertingCard({
       </div>
 
       <ul className="mt-5 space-y-3 text-sm">
-        <Step done={uploaded} active={!uploaded} label="PDF enviado" />
+        <Step done={uploaded} active={!uploaded} label="Arquivo enviado" />
         <Step
           done={false}
           active={uploaded}

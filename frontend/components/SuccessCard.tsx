@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { formatBytes } from "@/lib/format";
+import { useState } from "react";
+import { formatBytes, truncateMarkdown } from "@/lib/format";
+import { isZipName, pagesLabel, type PageEntry } from "@/lib/pages";
+import { useConversion } from "./ConversionProvider";
+import MarkdownRenderer from "./MarkdownRenderer";
+import PagerControls from "./PagerControls";
+import ViewModeToggle from "./ViewModeToggle";
 import {
   CheckCircleIcon,
   DownloadIcon,
@@ -10,10 +16,12 @@ import {
   RefreshIcon,
 } from "./icons";
 
+const PREVIEW_CHARS = 1500;
+
 interface Props {
   filename: string;
   size: number;
-  preview: string;
+  pages: PageEntry[];
   onDownload: () => void;
   onReset: () => void;
 }
@@ -21,10 +29,15 @@ interface Props {
 export default function SuccessCard({
   filename,
   size,
-  preview,
+  pages,
   onDownload,
   onReset,
 }: Props) {
+  const { viewMode } = useConversion();
+  const [index, setIndex] = useState(0);
+  const page = pages[Math.min(index, pages.length - 1)];
+  const preview = truncateMarkdown(page?.text ?? "", PREVIEW_CHARS);
+  const split = isZipName(filename);
   return (
     <div className="space-y-5">
       <section className="rounded-3xl border border-line bg-surface p-5 sm:p-7">
@@ -35,7 +48,9 @@ export default function SuccessCard({
           <div>
             <h2 className="text-lg font-semibold">Conversão concluída</h2>
             <p className="text-sm text-muted">
-              Seu Markdown está pronto para baixar.
+              {split
+                ? `${pagesLabel(pages.length)}, um arquivo .md por página, dentro de um .zip.`
+                : "Seu Markdown está pronto para baixar."}
             </p>
           </div>
         </div>
@@ -57,7 +72,7 @@ export default function SuccessCard({
             className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-accent font-semibold text-accent-ink transition-opacity hover:opacity-90"
           >
             <DownloadIcon />
-            Baixar Markdown
+            {split ? "Baixar .zip" : "Baixar Markdown"}
           </button>
           <button
             type="button"
@@ -74,8 +89,18 @@ export default function SuccessCard({
         <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-3.5 text-sm">
           <span className="font-semibold">Prévia</span>
           <span className="min-w-0 flex-1 truncate text-right font-mono text-muted">
-            {filename}
+            {page?.name ?? filename}
           </span>
+          {pages.length > 1 && (
+            <PagerControls
+              index={index}
+              total={pages.length}
+              onChange={setIndex}
+              labelPrev="Página anterior"
+              labelNext="Próxima página"
+            />
+          )}
+          <ViewModeToggle />
           <Link
             href="/preview"
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-surface"
@@ -84,9 +109,15 @@ export default function SuccessCard({
             Tela cheia
           </Link>
         </div>
-        <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-[13px] leading-relaxed">
-          {preview}
-        </pre>
+        {viewMode === "formatted" ? (
+          <div className="max-h-[360px] overflow-auto p-5 text-sm">
+            <MarkdownRenderer text={preview} />
+          </div>
+        ) : (
+          <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-[13px] leading-relaxed">
+            {preview}
+          </pre>
+        )}
       </section>
     </div>
   );

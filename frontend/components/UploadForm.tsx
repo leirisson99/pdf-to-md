@@ -9,60 +9,106 @@ import {
 } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { formatBytes } from "@/lib/format";
+import { readPages } from "@/lib/pages";
+import {
+  ACCEPT_ATTR,
+  ACCEPTED_LABEL,
+  extensionOf,
+  isAccepted,
+  isImage,
+  isPdf,
+} from "@/lib/formats";
+import BatchPanel from "./BatchPanel";
 import { useConversion } from "./ConversionProvider";
 import ConvertingCard from "./ConvertingCard";
 import Dropzone from "./Dropzone";
 import EngineSelector from "./EngineSelector";
 import { AlertIcon, ArrowRightIcon, CloseIcon, FileIcon } from "./icons";
 import SuccessCard from "./SuccessCard";
+import { useBatchConversion } from "./useBatchConversion";
 
 type Status = "idle" | "converting" | "success" | "error";
 
-const PREVIEW_CHARS = 1500;
+const MAX_BATCH_FILES = 20;
 
 function validate(file: File): string | null {
-  const isPdf =
-    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  if (!isPdf) return "Selecione um arquivo PDF.";
+  if (!isAccepted(file)) return `Formato não suportado. Use ${ACCEPTED_LABEL}.`;
   if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024)
     return `O arquivo excede o limite de ${MAX_FILE_SIZE_MB} MB.`;
   return null;
 }
 
+const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size;
+
 export default function UploadForm() {
   const { conversion, setConversion } = useConversion();
   // Ao voltar da tela cheia, o resultado ainda está em memória.
   const [status, setStatus] = useState<Status>(conversion ? "success" : "idle");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [engine, setEngine] = useState<Engine>("fast");
+  const [splitPages, setSplitPages] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const abortRef = useRef<AbortController | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  const batch = useBatchConversion();
+
+  // Fluxo de arquivo único (prévia, tela cheia) só vale com exatamente 1 arquivo.
+  const file = files.length === 1 ? files[0] : null;
+  const hasPdf = files.some(isPdf);
 
   // Cancela requisição pendente ao desmontar.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  function selectFile(next: File) {
-    const error = validate(next);
-    setFileError(error);
-    if (!error) setFile(next);
+  /** Valida e junta os arquivos novos aos já selecionados. */
+  function addFiles(incoming: File[]) {
+    const errors: string[] = [];
+    const valid: File[] = [];
+    for (const f of incoming) {
+      const error = validate(f);
+      if (error) errors.push(incoming.length > 1 ? `${f.name}: ${error}` : error);
+      else valid.push(f);
+    }
+
+    const merged = [...files];
+    for (const f of valid) if (!merged.some((m) => sameFile(m, f))) merged.push(f);
+    if (merged.length > MAX_BATCH_FILES) {
+      errors.push(`Limite de ${MAX_BATCH_FILES} arquivos por lote.`);
+    }
+
+    setFileError(errors.length > 0 ? errors.join(" ") : null);
+    setFiles(merged.slice(0, MAX_BATCH_FILES));
   }
 
-  async function handleConvert() {
-    if (!file) return;
+  /** "Trocar" (arquivo único): substitui em vez de acrescentar. */
+  function replaceFile(next: File) {
+    const error = validate(next);
+    setFileError(error);
+    if (!error) setFiles([next]);
+  }
+
+  function removeFile(target: File) {
+    const remaining = files.filter((f) => f !== target);
+    setFiles(remaining);
+    setFileError(null);
+    if (remaining.length === 0) setStatus("idle");
+  }
+
+  async function handleConvertSingle(target: File) {
     const controller = new AbortController();
     abortRef.current = controller;
     setUploaded(false);
     setStatus("converting");
     try {
-      const res = await convertPdf(file, engine, {
+      const res = await convertPdf(target, engine, {
         signal: controller.signal,
         onUploaded: () => setUploaded(true),
+        splitPages: splitPages && isPdf(target),
       });
-      const text = await res.blob.text();
-      setConversion({ filename: res.filename, blob: res.blob, text });
+      const pages = await readPages(res);
+      setConversion({ filename: res.filename, blob: res.blob, pages });
       setStatus("success");
     } catch (err) {
       if (err instanceof ConvertAbortedError) {
@@ -76,12 +122,31 @@ export default function UploadForm() {
     }
   }
 
+  function handleConvert() {
+    if (files.length === 0) return;
+    if (files.length === 1) void handleConvertSingle(files[0]);
+    else batch.start(files, engine, splitPages);
+  }
+
   function reset() {
     abortRef.current?.abort();
+    batch.reset();
     setStatus("idle");
-    setFile(null);
+    setFiles([]);
     setConversion(null);
     setFileError(null);
+  }
+
+  if (batch.items.length > 0) {
+    return (
+      <BatchPanel
+        items={batch.items}
+        running={batch.running}
+        onCancel={batch.cancel}
+        onRetryFailed={() => batch.retryFailed(engine, splitPages)}
+        onReset={reset}
+      />
+    );
   }
 
   if (status === "converting" && file) {
@@ -96,14 +161,11 @@ export default function UploadForm() {
   }
 
   if (status === "success" && conversion) {
-    const { text } = conversion;
     return (
       <SuccessCard
         filename={conversion.filename}
         size={conversion.blob.size}
-        preview={
-          text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}\n…` : text
-        }
+        pages={conversion.pages}
         onDownload={() => downloadBlob(conversion.blob, conversion.filename)}
         onReset={reset}
       />
@@ -125,66 +187,137 @@ export default function UploadForm() {
         </div>
       )}
 
-      {file ? (
-        <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-text">
-            <FileIcon />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-mono text-base font-medium">
-              {file.name}
+      {files.length > 0 ? (
+        <div className="space-y-3">
+          {files.map((f) => (
+            <div
+              key={`${f.name}-${f.size}`}
+              className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-4"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-text">
+                <FileIcon />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-mono text-base font-medium">
+                  {f.name}
+                </p>
+                <p className="text-sm text-muted">{formatBytes(f.size)} · {extensionOf(f.name).toUpperCase()}</p>
+              </div>
+              {files.length === 1 && (
+                <button
+                  type="button"
+                  onClick={() => replaceInputRef.current?.click()}
+                  className="h-11 rounded-xl border border-line px-4 text-sm font-medium transition-colors hover:bg-inset"
+                >
+                  Trocar
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label={`Remover ${f.name}`}
+                onClick={() => removeFile(f)}
+                className="flex h-11 w-9 items-center justify-center text-muted transition-colors hover:text-foreground"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          ))}
+
+          {files.length < MAX_BATCH_FILES && (
+            <button
+              type="button"
+              onClick={() => addInputRef.current?.click()}
+              className="h-11 w-full rounded-xl border border-dashed border-muted/50 text-sm font-medium text-muted transition-colors hover:border-muted hover:text-foreground"
+            >
+              + Adicionar mais arquivos
+            </button>
+          )}
+          {fileError && (
+            <p role="alert" className="text-sm text-danger">
+              {fileError}
             </p>
-            <p className="text-sm text-muted">{formatBytes(file.size)} · PDF</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="h-11 rounded-xl border border-line px-4 text-sm font-medium transition-colors hover:bg-inset"
-          >
-            Trocar
-          </button>
-          <button
-            type="button"
-            aria-label="Remover arquivo"
-            onClick={() => {
-              setFile(null);
-              setStatus("idle");
-            }}
-            className="flex h-11 w-9 items-center justify-center text-muted transition-colors hover:text-foreground"
-          >
-            <CloseIcon />
-          </button>
+          )}
+
           <input
-            ref={inputRef}
+            ref={replaceInputRef}
             type="file"
-            accept="application/pdf,.pdf"
+            accept={ACCEPT_ATTR}
             className="hidden"
             onChange={(e) => {
               const next = e.target.files?.[0];
-              if (next) selectFile(next);
+              if (next) replaceFile(next);
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={addInputRef}
+            type="file"
+            accept={ACCEPT_ATTR}
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) addFiles(Array.from(e.target.files));
               e.target.value = "";
             }}
           />
         </div>
       ) : (
-        <Dropzone onFile={selectFile} error={fileError} />
+        <Dropzone onFiles={addFiles} error={fileError} />
       )}
 
-      <EngineSelector value={engine} onChange={setEngine} />
+      {(files.length === 0 || hasPdf) && (
+        <EngineSelector value={engine} onChange={setEngine} />
+      )}
+      {hasPdf && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line bg-surface p-4">
+          <input
+            type="checkbox"
+            checked={splitPages}
+            onChange={(e) => setSplitPages(e.target.checked)}
+            className="mt-1 h-4 w-4 accent-[var(--accent)]"
+          />
+          <span>
+            <span className="block text-sm font-semibold">
+              Um arquivo .md por página
+            </span>
+            <span className="block text-sm text-muted">
+              Os PDFs são baixados em um .zip, com uma página por arquivo.
+              Páginas em branco são ignoradas.
+            </span>
+          </span>
+        </label>
+      )}
+      {files.length > 0 && !hasPdf && (
+        <p className="text-sm text-muted">
+          {files.some(isImage)
+            ? "Imagens são convertidas com OCR (reconhecimento de texto) do Docling; só o texto é extraído."
+            : "Este formato é convertido automaticamente com o Docling."}
+        </p>
+      )}
+      {hasPdf && files.some((f) => !isPdf(f)) && (
+        <p className="-mt-4 text-sm text-muted">
+          O modo escolhido vale só para os PDFs; os demais formatos usam sempre
+          o Docling.
+        </p>
+      )}
 
       <div>
         <button
           type="button"
-          disabled={!file}
+          disabled={files.length === 0}
           onClick={handleConvert}
           className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-accent text-base font-semibold text-accent-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-ink disabled:hover:opacity-100"
         >
           <ArrowRightIcon />
-          {status === "error" ? "Tentar novamente" : "Converter"}
+          {status === "error"
+            ? "Tentar novamente"
+            : files.length > 1
+              ? `Converter ${files.length} arquivos`
+              : "Converter"}
         </button>
-        {!file && (
+        {files.length === 0 && (
           <p className="mt-4 text-center text-sm text-muted">
-            Selecione um PDF para habilitar a conversão.
+            Selecione um ou mais arquivos para habilitar a conversão.
           </p>
         )}
       </div>

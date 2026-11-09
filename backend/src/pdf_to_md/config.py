@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 20
     cors_origins: str = "http://localhost:3000"
     log_level: str = "INFO"
+    database_path: str = "data/history.db"
 
     @property
     def max_file_size_bytes(self) -> int:

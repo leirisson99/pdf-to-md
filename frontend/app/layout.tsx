@@ -11,7 +11,7 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "pdfToMd — PDF to Markdown",
-  description: "Converta arquivos PDF em Markdown limpo e estruturado.",
+  description: "Converta PDF, Word, planilhas e texto em Markdown limpo e estruturado.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

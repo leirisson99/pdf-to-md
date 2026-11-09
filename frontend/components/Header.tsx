@@ -1,3 +1,4 @@
+import HeaderNav from "./HeaderNav";
 import { FileIcon, GithubIcon } from "./icons";
 
 const REPO_URL = "https://github.com/sistemaboutiqueartesanais/pdf-to-md";
@@ -12,6 +13,7 @@ export default function Header() {
           </span>
           <span className="font-mono text-base font-semibold">pdfToMd</span>
         </div>
+        <HeaderNav />
         <a
           href={REPO_URL}
           target="_blank"

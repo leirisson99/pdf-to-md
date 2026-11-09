@@ -11,7 +11,7 @@ export default function Home() {
           PDF to Markdown
         </h1>
         <p className="mt-3 max-w-md text-center text-base text-muted sm:text-lg">
-          Convert PDF files into clean, structured Markdown.
+          Convert PDF, Word, Excel, CSV and TXT files into clean, structured Markdown.
         </p>
         <div className="mt-10 w-full max-w-[680px]">
           <UploadForm />

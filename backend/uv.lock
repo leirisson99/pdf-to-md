@@ -1907,6 +1907,7 @@ source = { editable = "." }
 dependencies = [
     { name = "docling" },
     { name = "fastapi", extra = ["standard"] },
+    { name = "pillow" },
     { name = "pydantic-settings" },
     { name = "pymupdf4llm" },
     { name = "python-multipart" },
@@ -1923,6 +1924,7 @@ dev = [
 requires-dist = [
     { name = "docling", specifier = ">=2.148.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.162.0" },
+    { name = "pillow", specifier = ">=13.0.0" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
     { name = "pymupdf4llm", specifier = ">=2.1" },
     { name = "python-multipart", specifier = ">=0.0.33" },

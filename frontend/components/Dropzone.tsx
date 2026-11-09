@@ -2,20 +2,20 @@
 
 import { useRef, useState } from "react";
 import { MAX_FILE_SIZE_MB } from "@/lib/api";
+import { ACCEPT_ATTR, ACCEPTED_LABEL } from "@/lib/formats";
 import { UploadIcon } from "./icons";
 
 interface Props {
-  onFile: (file: File) => void;
+  onFiles: (files: File[]) => void;
   error?: string | null;
 }
 
-export default function Dropzone({ onFile, error }: Props) {
+export default function Dropzone({ onFiles, error }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
   function handleFiles(files: FileList | null) {
-    const file = files?.[0];
-    if (file) onFile(file);
+    if (files && files.length > 0) onFiles(Array.from(files));
   }
 
   return (
@@ -43,16 +43,17 @@ export default function Dropzone({ onFile, error }: Props) {
           <UploadIcon width={26} height={26} />
         </span>
         <span className="mt-5 max-w-[16rem] text-lg font-semibold sm:max-w-none">
-          Arraste seu PDF aqui ou clique para selecionar
+          Arraste seus arquivos aqui ou clique para selecionar
         </span>
         <span className="mt-2 text-sm text-muted">
-          PDF até {MAX_FILE_SIZE_MB} MB
+          {ACCEPTED_LABEL} · até {MAX_FILE_SIZE_MB} MB cada
         </span>
       </button>
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept={ACCEPT_ATTR}
+        multiple
         className="hidden"
         onChange={(e) => {
           handleFiles(e.target.files);
